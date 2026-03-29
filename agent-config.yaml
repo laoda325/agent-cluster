@@ -1,0 +1,100 @@
+# Agent Cluster Configuration
+# Agent 集群配置文件
+
+cluster:
+  name: "AgentCluster"
+  version: "1.0.0"
+  max_concurrent_agents: 5
+  max_retries: 3
+
+agents:
+  codex:
+    enabled: true
+    model: "gpt-5.3-codex"
+    priority: 1
+    description: "主力Agent - 后端逻辑、复杂bug、多文件重构"
+    use_cases:
+      - backend_logic
+      - complex_bugs
+      - multi_file_refactor
+      - cross_codebase_reasoning
+    limitations:
+      - "较慢但彻底"
+    weight: 0.9
+
+  claude_code:
+    enabled: true
+    model: "claude-opus-4.5"
+    priority: 2
+    description: "速度型Agent - 前端工作、git操作"
+    use_cases:
+      - frontend_work
+      - git_operations
+      - quick_fixes
+    limitations:
+      - "适合快速迭代"
+    weight: 0.7
+
+  gemini:
+    enabled: true
+    model: "gemini-2.5-pro"
+    priority: 3
+    description: "设计师Agent - UI/UX设计、设计规范"
+    use_cases:
+      - ui_design
+      - design_specs
+      - html_css
+    limitations:
+      - "擅长设计审美"
+    weight: 0.5
+
+reviewers:
+  codex_reviewer:
+    enabled: true
+    model: "gpt-5.3-codex"
+    focus: "边界情况、逻辑错误、缺失错误处理、竞态条件"
+    trust_level: "high"
+
+  gemini_reviewer:
+    enabled: true
+    model: "gemini-code-assist"
+    focus: "安全问题、扩展性问题"
+    trust_level: "medium"
+
+  claude_reviewer:
+    enabled: false
+    model: "claude-opus-4.5"
+    focus: "过度谨慎，通常跳过"
+    trust_level: "low"
+
+monitoring:
+  check_interval_minutes: 10
+  max_idle_minutes: 120
+  notify_on:
+    - pr_ready
+    - agent_failed
+    - ci_failed
+    - all_reviewers_passed
+
+notifications:
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  
+  discord:
+    enabled: false
+    webhook_url: ""
+
+storage:
+  tasks_dir: "./tasks"
+  worktrees_base: "../worktrees"
+  context_dir: "./context"
+
+completion_criteria:
+  pr_created: true
+  branch_synced: true
+  ci_passed: true
+  codex_reviewer_passed: true
+  gemini_reviewer_passed: true
+  ui_screenshots: true
