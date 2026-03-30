@@ -33,11 +33,11 @@ class AgentLauncher:
 
     def _get_default_cli_template(self, agent_type: str) -> str:
         defaults = {
-            "codex": "codex --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\"",
-            "claude_code": "claude-code --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\"",
-            "gemini": "gemini --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
+            "codex": "cd \"{worktree}\" && codex exec --model {model} < \"{prompt_file}\"",
+            "claude_code": "cd \"{worktree}\" && claude-code --model {model} < \"{prompt_file}\"",
+            "gemini": "cd \"{worktree}\" && gemini --model {model} < \"{prompt_file}\""
         }
-        return defaults.get(agent_type, "{agent} --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\"")
+        return defaults.get(agent_type, "cd \"{worktree}\" && {agent} --model {model} < \"{prompt_file}\"")
 
     def _build_agent_cli_command(self, task_id: str, worktree_path: Path,
                                  agent_type: str, model: str,
@@ -77,12 +77,24 @@ class AgentLauncher:
             print(f"⚠️  Worktree 已存在: {worktree_path}")
             return worktree_path
         
+        # 获取当前 commit hash 作为基础（避免 origin/main 歧义）
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            base_commit = result.stdout.strip()
+        except:
+            base_commit = base_branch
+        
         # 创建 worktree
         cmd = [
             "git", "worktree", "add",
             str(worktree_path),
             "-b", branch_name,
-            f"origin/{base_branch}"
+            base_commit
         ]
         
         try:

@@ -1,0 +1,76 @@
+# 《三国演义外传》小说配置
+# =========================
+
+novel:
+  title: "三国演义外传"
+  subtitle: "小人物眼中的乱世风云"
+  genre: "历史小说"
+  
+  # 时代背景
+  setting:
+    dynasty: "东汉末年 - 三国"
+    start_year: 184  # 黄巾起义
+    end_year: 280    # 西晋统一
+    location: "中原地区"
+  
+  # 主人公设定
+  protagonist:
+    name: "张翼"
+    courtesy_name: "子翔"
+    birth_year: 184
+    origin: "涿郡涿县"
+    family: "普通农户家庭"
+    occupation: "从农民到士兵，再到小吏"
+  
+  # 结构
+  structure:
+    total_chapters: 30
+    volumes:
+      - name: "第一卷：黄巾乱世"
+        period: "184-220"
+        chapters: 10
+        theme: "乱世初现，百姓流离"
+      
+      - name: "第二卷：三国鼎立"
+        period: "220-263"
+        chapters: 12
+        theme: "群雄割据，小人物求生"
+      
+      - name: "第三卷：天下归晋"
+        period: "263-280"
+        chapters: 8
+        theme: "统一前夕，旧人凋零"
+  
+  # 历史事件参考
+  historical_events:
+    - year: 184
+      event: "黄巾起义爆发"
+    - year: 190
+      event: "董卓入京，关东联军讨董"
+    - year: 200
+      event: "官渡之战"
+    - year: 208
+      event: "赤壁之战"
+    - year: 220
+      event: "曹丕篡汉，三国开始"
+    - year: 221
+      event: "刘备称帝"
+    - year: 222
+      event: "夷陵之战"
+    - year: 263
+      event: "蜀汉灭亡"
+    - year: 280
+      event: "西晋统一"
+  
+  # 风格设定
+  style:
+    perspective: "小人物视角"
+    tone: "朴实厚重"
+    language: "半文半白"
+    focus: "普通人在乱世中的生存与选择"
+  
+  # 输出配置
+  output:
+    base_dir: "F:/AI小说风格仿写创作/三国演义外传"
+    format: "markdown"
+    encoding: "utf-8"

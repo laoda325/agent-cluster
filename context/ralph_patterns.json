@@ -1,0 +1,60 @@
+{
+  "feature": {
+    "total": 3,
+    "success": 3,
+    "fail": 0,
+    "agents": {
+      "codex": {
+        "success": 3,
+        "fail": 0
+      }
+    },
+    "failure_reasons": []
+  },
+  "bug": {
+    "total": 4,
+    "success": 3,
+    "fail": 1,
+    "agents": {
+      "claude_code": {
+        "success": 2,
+        "fail": 1
+      },
+      "gemini": {
+        "success": 1,
+        "fail": 0
+      }
+    },
+    "failure_reasons": [
+      "权限配置错误"
+    ]
+  },
+  "frontend": {
+    "total": 4,
+    "success": 4,
+    "fail": 0,
+    "agents": {
+      "gemini": {
+        "success": 3,
+        "fail": 0
+      },
+      "claude_code": {
+        "success": 1,
+        "fail": 0
+      }
+    },
+    "failure_reasons": []
+  },
+  "refactor": {
+    "total": 1,
+    "success": 1,
+    "fail": 0,
+    "agents": {
+      "codex": {
+        "success": 1,
+        "fail": 0
+      }
+    },
+    "failure_reasons": []
+  }
+}

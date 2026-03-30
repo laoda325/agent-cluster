@@ -1,0 +1,144 @@
+[
+  {
+    "task_id": "task-20260330000",
+    "description": "实现用户登录功能",
+    "agent": "codex",
+    "success": true,
+    "failure_reason": null,
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.086691",
+    "keywords": [
+      "feature"
+    ]
+  },
+  {
+    "task_id": "task-20260330001",
+    "description": "修复登录页面样式",
+    "agent": "claude_code",
+    "success": true,
+    "failure_reason": null,
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.088688",
+    "keywords": [
+      "bug"
+    ]
+  },
+  {
+    "task_id": "task-20260330002",
+    "description": "设计用户头像组件",
+    "agent": "gemini",
+    "success": true,
+    "failure_reason": null,
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.090692",
+    "keywords": [
+      "frontend"
+    ]
+  },
+  {
+    "task_id": "task-20260330003",
+    "description": "实现用户注册功能",
+    "agent": "codex",
+    "success": true,
+    "failure_reason": null,
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.092693",
+    "keywords": [
+      "feature"
+    ]
+  },
+  {
+    "task_id": "task-20260330004",
+    "description": "修复登录Bug",
+    "agent": "claude_code",
+    "success": false,
+    "failure_reason": "权限配置错误",
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.094690",
+    "keywords": [
+      "bug"
+    ]
+  },
+  {
+    "task_id": "task-20260330005",
+    "description": "优化登录性能",
+    "agent": "codex",
+    "success": true,
+    "failure_reason": null,
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.096686",
+    "keywords": [
+      "refactor"
+    ]
+  },
+  {
+    "task_id": "task-20260330006",
+    "description": "设计登录页面UI",
+    "agent": "gemini",
+    "success": true,
+    "failure_reason": null,
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.099008",
+    "keywords": [
+      "frontend"
+    ]
+  },
+  {
+    "task_id": "task-20260330007",
+    "description": "实现密码重置功能",
+    "agent": "codex",
+    "success": true,
+    "failure_reason": null,
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.101123",
+    "keywords": [
+      "feature"
+    ]
+  },
+  {
+    "task_id": "task-20260330008",
+    "description": "修复前端样式问题",
+    "agent": "claude_code",
+    "success": true,
+    "failure_reason": null,
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.103002",
+    "keywords": [
+      "frontend",
+      "bug"
+    ]
+  },
+  {
+    "task_id": "task-20260330009",
+    "description": "设计错误提示组件",
+    "agent": "gemini",
+    "success": true,
+    "failure_reason": null,
+    "execution_time": null,
+    "pr_created": false,
+    "ci_passed": false,
+    "timestamp": "2026-03-30T18:15:06.105014",
+    "keywords": [
+      "frontend",
+      "bug"
+    ]
+  }
+]
