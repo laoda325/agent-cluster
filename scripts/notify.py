@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-通知服务 - 发送 Telegram/Discord 通知
+通知服务 - 发送 微信/Discord 通知
 """
 
 import json
@@ -25,41 +25,41 @@ class NotificationService:
         except Exception:
             self.config = {}
     
-    def send_telegram(self, message: str, parse_mode: str = "Markdown") -> bool:
-        """发送 Telegram 通知"""
-        telegram_config = self.config.get('notifications', {}).get('telegram', {})
+    def send_wechat(self, message: str) -> bool:
+        """发送企业微信机器人通知"""
+        wechat_config = self.config.get('notifications', {}).get('wechat', {})
         
-        if not telegram_config.get('enabled'):
-            print("⚠️  Telegram 通知未启用")
+        if not wechat_config.get('enabled'):
+            print("⚠️  微信通知未启用")
             return False
         
-        bot_token = telegram_config.get('bot_token')
-        chat_id = telegram_config.get('chat_id')
+        webhook_url = wechat_config.get('webhook_url')
         
-        if not bot_token or not chat_id:
-            print("⚠️  Telegram 配置不完整")
+        if not webhook_url:
+            print("⚠️  微信配置不完整")
             return False
         
         try:
             import requests
-            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
             data = {
-                "chat_id": chat_id,
-                "text": message,
-                "parse_mode": parse_mode
+                "msgtype": "text",
+                "text": {
+                    "content": message
+                }
             }
             
-            response = requests.post(url, data=data, timeout=10)
+            response = requests.post(webhook_url, json=data, timeout=10)
+            result = response.json() if response.text else {}
             
-            if response.status_code == 200:
-                print("✅ Telegram 通知发送成功")
+            if response.status_code == 200 and result.get("errcode") == 0:
+                print("✅ 微信通知发送成功")
                 return True
             else:
-                print(f"⚠️  Telegram 通知发送失败: {response.text}")
+                print(f"⚠️  微信通知发送失败: {response.text}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Telegram 通知发送失败: {e}")
+            print(f"❌ 微信通知发送失败: {e}")
             return False
     
     def send_discord(self, message: str) -> bool:
@@ -112,7 +112,7 @@ class NotificationService:
 
 请尽快审查。
 """
-        self.send_telegram(message)
+        self.send_wechat(message)
         self.send_discord(message)
     
     def notify_agent_started(self, agent: str, task_id: str, description: str):
@@ -125,7 +125,7 @@ class NotificationService:
 📝 **描述**: {description}
 ⏰ **时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
-        self.send_telegram(message)
+        self.send_wechat(message)
     
     def notify_agent_failed(self, agent: str, task_id: str, error: str):
         """通知 Agent 失败"""
@@ -139,7 +139,7 @@ class NotificationService:
 
 需要人工介入。
 """
-        self.send_telegram(message)
+        self.send_wechat(message)
     
     def notify_pr_merged(self, pr_number: int, task_id: str):
         """通知 PR 已合并"""
@@ -150,7 +150,7 @@ class NotificationService:
 🔢 **PR 编号**: #{pr_number}
 ⏰ **时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
-        self.send_telegram(message)
+        self.send_wechat(message)
 
 
 def main():

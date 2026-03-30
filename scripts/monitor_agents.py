@@ -39,7 +39,8 @@ class AgentMonitor:
             try:
                 with open(task_file, 'r', encoding='utf-8') as f:
                     task = json.load(f)
-                    tasks.append(task)
+                    if isinstance(task, dict) and task.get("id"):
+                        tasks.append(task)
             except Exception as e:
                 print(f"⚠️  读取任务文件失败 {task_file}: {e}")
         
@@ -56,8 +57,65 @@ class AgentMonitor:
             return result.returncode == 0
         except Exception:
             return False
+
+    def _is_process_alive(self, pid: int) -> bool:
+        """检查本机进程是否存活"""
+        if not pid:
+            return False
+        if os.name == "nt":
+            try:
+                result = subprocess.run(
+                    ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                output = (result.stdout or "").strip().lower()
+                return result.returncode == 0 and "no tasks are running" not in output and "没有运行的任务" not in output
+            except Exception:
+                return False
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+    def _check_heartbeat_fresh(self, heartbeat_file: Optional[str], max_age_seconds: int = 90) -> bool:
+        """检查心跳是否新鲜"""
+        if not heartbeat_file:
+            return False
+        hb_path = Path(heartbeat_file)
+        if not hb_path.exists():
+            return False
+        try:
+            with open(hb_path, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
+            ts = float(payload.get("ts", 0))
+            if ts <= 0:
+                return False
+            return (datetime.now().timestamp() - ts) <= max_age_seconds
+        except Exception:
+            return False
+
+    def check_execution_alive(self, task: Dict[str, Any]) -> bool:
+        """统一检查执行层会话是否存活（tmux 或后台进程）"""
+        session = task.get("tmuxSession", "")
+        process_id = task.get("processId")
+        heartbeat_file = task.get("heartbeatFile")
+
+        if isinstance(session, str) and session.startswith("pid:"):
+            try:
+                process_id = int(session.split(":", 1)[1])
+            except Exception:
+                process_id = process_id
+
+        alive_by_process = self._is_process_alive(int(process_id)) if process_id else False
+        alive_by_heartbeat = self._check_heartbeat_fresh(heartbeat_file)
+        alive_by_tmux = self.check_tmux_session(session) if session and not str(session).startswith("pid:") else False
+
+        return alive_by_tmux or alive_by_process or alive_by_heartbeat
     
-    def check_pr_exists(self, branch: str, repo: str = None) -> Optional[Dict]:
+    def check_pr_exists(self, branch: str, repo: Optional[str] = None) -> Optional[Dict]:
         """检查 PR 是否存在"""
         try:
             # 使用 gh 命令检查 PR
@@ -178,13 +236,14 @@ class AgentMonitor:
             "needs_retry": False
         }
         
-        # 1. 检查 tmux 会话
-        tmux_session = task.get("tmuxSession")
-        if tmux_session:
-            completion["checks"]["tmux_alive"] = self.check_tmux_session(tmux_session)
+        # 1. 检查执行会话
+        completion["checks"]["tmux_alive"] = self.check_execution_alive(task)
         
         # 2. 检查 PR
         branch = task.get("branch")
+        if not branch:
+            return completion
+
         pr = self.check_pr_exists(branch)
         if pr:
             completion["checks"]["pr_created"] = True
@@ -196,12 +255,13 @@ class AgentMonitor:
             
             # 4. 检查 Reviewers
             pr_number = pr.get("number")
-            reviewers = self.check_reviewers_passed(pr_number)
-            completion["checks"]["codex_reviewer_passed"] = reviewers["codex_reviewer"]
-            completion["checks"]["gemini_reviewer_passed"] = reviewers["gemini_reviewer"]
-            
-            # 5. 检查截图
-            completion["checks"]["ui_screenshots"] = self.check_ui_screenshots(pr_number)
+            if isinstance(pr_number, int):
+                reviewers = self.check_reviewers_passed(pr_number)
+                completion["checks"]["codex_reviewer_passed"] = reviewers["codex_reviewer"]
+                completion["checks"]["gemini_reviewer_passed"] = reviewers["gemini_reviewer"]
+
+                # 5. 检查截图
+                completion["checks"]["ui_screenshots"] = self.check_ui_screenshots(pr_number)
             
             # 6. 检查分支同步
             try:
@@ -230,9 +290,15 @@ class AgentMonitor:
             # 检查是否超时
             started_at = task.get("startedAt", 0)
             max_idle = self.config.get('monitoring', {}).get('max_idle_minutes', 120)
+            min_runtime_before_retry = self.config.get('monitoring', {}).get('min_runtime_minutes_before_retry', 5)
             elapsed_minutes = (datetime.now().timestamp() * 1000 - started_at) / 60000
-            
-            if elapsed_minutes > max_idle and not completion["checks"]["tmux_alive"]:
+
+            no_pr_yet = not completion["checks"].get("pr_created", False)
+            execution_down = not completion["checks"]["tmux_alive"]
+
+            if execution_down and no_pr_yet and elapsed_minutes >= min_runtime_before_retry:
+                completion["needs_retry"] = True
+            elif elapsed_minutes > max_idle and execution_down:
                 completion["needs_retry"] = True
         
         return completion
@@ -286,33 +352,40 @@ class AgentMonitor:
             
             if completion["ready_for_review"]:
                 print(f"   🎉 准备好进行 Review!")
-                self.update_task_status(task["id"], {"status": "ready_for_review"})
+                self.update_task_status(task["id"], {
+                    "status": "ready_for_review",
+                    "updatedAt": int(datetime.now().timestamp() * 1000)
+                })
             
             if completion["needs_retry"]:
                 print(f"   ⚠️  需要重试")
-                self.update_task_status(task["id"], {"status": "needs_retry"})
+                self.update_task_status(task["id"], {
+                    "status": "needs_retry",
+                    "updatedAt": int(datetime.now().timestamp() * 1000)
+                })
             
             print()
         
         return results
     
-    def send_notification(self, message: str, task: Dict = None):
+    def send_notification(self, message: str, task: Optional[Dict[str, Any]] = None):
         """发送通知"""
-        telegram_config = self.config.get('notifications', {}).get('telegram', {})
+        wechat_config = self.config.get('notifications', {}).get('wechat', {})
         
-        if telegram_config.get('enabled') and telegram_config.get('bot_token'):
-            # 发送 Telegram 通知
+        if wechat_config.get('enabled') and wechat_config.get('webhook_url'):
+            # 发送企业微信机器人通知
             try:
                 import requests
-                url = f"https://api.telegram.org/bot{telegram_config['bot_token']}/sendMessage"
+                url = wechat_config['webhook_url']
                 data = {
-                    "chat_id": telegram_config['chat_id'],
-                    "text": message,
-                    "parse_mode": "Markdown"
+                    "msgtype": "text",
+                    "text": {
+                        "content": message
+                    }
                 }
-                requests.post(url, data=data, timeout=10)
+                requests.post(url, json=data, timeout=10)
             except Exception as e:
-                print(f"⚠️  发送 Telegram 通知失败: {e}")
+                print(f"⚠️  发送微信通知失败: {e}")
 
 
 def main():

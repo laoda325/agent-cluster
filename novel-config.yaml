@@ -1,0 +1,93 @@
+# 小说创作编排层配置
+# Novel Writing Orchestrator Configuration
+
+project:
+  name: "五代十国宋"
+  genre: "历史小说"
+  main_theme: "小人物的视角见证五代十国宋的兴衰更替"
+  protagonist: "小人物（平民/士兵/商人）"
+  time_span: "907年 - 1005年"
+  
+output:
+  base_dir: "F:\\AI小说风格仿写创作"
+  volumes:
+    - name: "第一卷：五代乱世"
+      period: "907-960"
+      chapters: 20
+    - name: "第二卷：北宋崛起"
+      period: "960-979" 
+      chapters: 15
+    - name: "第三卷：宋辽博弈"
+      period: "979-1005"
+      chapters: 15
+
+writing:
+  style: "文学性与历史感并重"
+  tone: "厚重、深沉、史诗感"
+  target_length_per_chapter: "3000-5000字"
+  language: "简体中文"
+
+context:
+  # 从会议记录读取的历史事件
+  historical_events_file: "C:\\Users\\1978w\\Documents\\meetings\\五代十国宋历史事件.md"
+  characters_file: "characters.md"
+  world_setting_file: "world_setting.md"
+
+prompts:
+  chapter_outline:
+    system: "你是一位精通中国历史的作家，擅长写作五代十国题材的历史小说。"
+    template: |
+      请根据以下时代背景，创作第{chapter}章的大纲。
+      
+      时代背景：{historical_context}
+      
+      本章时间：{chapter_time}
+      本章地点：{chapter_location}
+      主要人物：{main_characters}
+      
+      要求：
+      1. 大纲字数：500-1000字
+      2. 包含起承转合
+      3. 融入本章涉及的历史事件
+      4. 体现小人物的命运与时代洪流的交织
+
+  chapter_content:
+    system: "你是一位精通中国历史的作家，擅长写作五代十国题材的历史小说。"
+    template: |
+      请根据以下大纲，创作第{chapter}章的正文内容。
+      
+      章节大纲：{outline}
+      
+      时代背景：{historical_context}
+      本章时间：{chapter_time}
+      本章地点：{chapter_location}
+      
+      写作要求：
+      1. 字数：3000-5000字
+      2. 文学性强，语言优美
+      3. 人物塑造立体
+      4. 历史事件真实可信
+      5. 体现时代特色（政治、经济、文化）
+
+agent:
+  model: "gemini"
+  temperature: 0.8
+  max_tokens: 8192
+
+workflow:
+  steps:
+    - name: "人物设定"
+      description: "创建主要人物背景设定"
+      output: "characters.md"
+    - name: "世界观设定"
+      description: "创建时代背景设定"
+      output: "world_setting.md"
+    - name: "故事大纲"
+      description: "创建整体故事大纲"
+      output: "outline.md"
+    - name: "分卷大纲"
+      description: "创建各卷详细大纲"
+      output: "volumes/"
+    - name: "章节正文"
+      description: "逐章创作正文"
+      output: "volumes/*/chapter_*.md"

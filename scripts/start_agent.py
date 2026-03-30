@@ -7,9 +7,10 @@ import json
 import os
 import subprocess
 import sys
+import textwrap
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 
 class AgentLauncher:
@@ -20,6 +21,43 @@ class AgentLauncher:
         self.tasks_dir = Path("./tasks")
         self.worktrees_base = Path("../worktrees")
         self.load_config()
+
+    def _now_ms(self) -> int:
+        return int(datetime.now().timestamp() * 1000)
+
+    def _write_prompt_file(self, worktree_path: Path, prompt_text: str) -> Path:
+        prompt_file = worktree_path / ".agent-prompt.md"
+        with open(prompt_file, 'w', encoding='utf-8') as f:
+            f.write(prompt_text)
+        return prompt_file
+
+    def _get_default_cli_template(self, agent_type: str) -> str:
+        defaults = {
+            "codex": "codex --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\"",
+            "claude_code": "claude-code --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\"",
+            "gemini": "gemini --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
+        }
+        return defaults.get(agent_type, "{agent} --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\"")
+
+    def _build_agent_cli_command(self, task_id: str, worktree_path: Path,
+                                 agent_type: str, model: str,
+                                 prompt_file: Path, description: str) -> str:
+        agent_config = self.config.get('agents', {}).get(agent_type, {})
+        template = agent_config.get('cli_command_template') or self._get_default_cli_template(agent_type)
+
+        context = {
+            "task_id": task_id,
+            "agent": agent_type,
+            "model": model,
+            "description": description,
+            "worktree": str(worktree_path.resolve()),
+            "prompt_file": str(prompt_file.resolve())
+        }
+
+        try:
+            return str(template).format(**context)
+        except Exception:
+            return self._get_default_cli_template(agent_type).format(**context)
     
     def load_config(self):
         """加载配置文件"""
@@ -74,7 +112,7 @@ class AgentLauncher:
         except subprocess.CalledProcessError as e:
             print(f"❌ 依赖安装失败: {e}")
     
-    def start_tmux_session(self, task_id: str, worktree_path: Path, 
+    def start_tmux_session(self, task_id: str, worktree_path: Path,
                            agent_type: str, model: str, description: str) -> str:
         """启动 tmux 会话"""
         session_name = f"{agent_type}-{task_id[:20]}"
@@ -103,33 +141,142 @@ echo "Task: {description}"
             print(f"✅ Tmux 会话启动: {session_name}")
             return session_name
         except subprocess.CalledProcessError as e:
-            print(f"❌ Tmux 会话启动失败: {e}")
-            # 如果 tmux 不可用，使用后台进程
-            return self.start_background_process(task_id, worktree_path, agent_type, model)
+            raise RuntimeError(f"Tmux 会话启动失败: {e}") from e
+        except FileNotFoundError:
+            raise RuntimeError("未找到 tmux")
     
     def start_background_process(self, task_id: str, worktree_path: Path,
-                                  agent_type: str, model: str) -> str:
+                                 agent_type: str, model: str,
+                                 prompt_file: Path,
+                                 description: str) -> Tuple[str, int, str, str, str]:
         """启动后台进程（Windows 兼容）"""
-        import threading
-        import time
-        
-        # 创建启动脚本
-        script_path = worktree_path / f"run_{agent_type}.sh"
-        with open(script_path, 'w', encoding='utf-8') as f:
-            f.write(f"""#!/bin/bash
-cd {worktree_path}
-echo "Starting {agent_type} agent..."
-echo "Model: {model}"
-# 在这里调用实际的 Agent 运行脚本
-""")
-        
-        # 记录进程信息
-        pid_file = self.tasks_dir / f"{task_id}.pid"
-        return str(pid_file)
+        self.tasks_dir.mkdir(parents=True, exist_ok=True)
+        worktree_abs = worktree_path.resolve()
+
+        heartbeat_file = (self.tasks_dir / f"{task_id}.heartbeat.json").resolve()
+        log_file = (self.tasks_dir / f"{task_id}.log").resolve()
+        pid_file = (self.tasks_dir / f"{task_id}.pid").resolve()
+        cli_command = self._build_agent_cli_command(
+            task_id=task_id,
+            worktree_path=worktree_abs,
+            agent_type=agent_type,
+            model=model,
+            prompt_file=prompt_file,
+            description=description
+        )
+
+        runtime_code = textwrap.dedent(
+            """
+            import json
+            import subprocess
+            import sys
+            import time
+            from datetime import datetime
+            from pathlib import Path
+
+            task_id = sys.argv[1]
+            heartbeat_file = Path(sys.argv[2])
+            prompt_file = Path(sys.argv[3])
+            agent_type = sys.argv[4]
+            model = sys.argv[5]
+            worktree = Path(sys.argv[6])
+            command = sys.argv[7]
+
+            prompt_preview = ""
+            if prompt_file.exists():
+                prompt_preview = prompt_file.read_text(encoding=\"utf-8\")[:500]
+
+            child = subprocess.Popen(
+                command,
+                cwd=worktree,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding=\"utf-8\",
+                errors=\"replace\"
+            )
+
+            i = 0
+            while child.poll() is None:
+                payload = {
+                    \"task_id\": task_id,
+                    \"agent\": agent_type,
+                    \"model\": model,
+                    \"command\": command,
+                    \"iteration\": i,
+                    \"worktree\": str(worktree),
+                    \"updated_at\": datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\"),
+                    \"ts\": time.time(),
+                    \"status\": \"running\"
+                }
+                heartbeat_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding=\"utf-8\")
+                if i == 0:
+                    print(f\"[agent-runtime] task={task_id} agent={agent_type} model={model}\")
+                    print(f\"[agent-runtime] command={command}\")
+                    if prompt_preview:
+                        print(\"[agent-runtime] prompt preview:\")
+                        print(prompt_preview)
+                if child.stdout:
+                    line = child.stdout.readline()
+                    if line:
+                        print(line.rstrip())
+                i += 1
+                time.sleep(5)
+
+            # Drain remaining output
+            if child.stdout:
+                for line in child.stdout:
+                    print(line.rstrip())
+
+            payload = {
+                \"task_id\": task_id,
+                \"agent\": agent_type,
+                \"model\": model,
+                \"command\": command,
+                \"exit_code\": child.returncode,
+                \"updated_at\": datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\"),
+                \"ts\": time.time(),
+                \"status\": \"completed\" if child.returncode == 0 else \"failed\"
+            }
+            heartbeat_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding=\"utf-8\")
+            """
+        ).strip()
+
+        with open(log_file, 'a', encoding='utf-8') as log_fp:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-u",
+                    "-c",
+                    runtime_code,
+                    task_id,
+                    str(heartbeat_file),
+                    str(prompt_file),
+                    agent_type,
+                    model,
+                    str(worktree_abs),
+                    cli_command
+                ],
+                cwd=worktree_abs,
+                stdout=log_fp,
+                stderr=log_fp
+            )
+
+        pid_file.write_text(str(process.pid), encoding='utf-8')
+        print(f"✅ 后台进程启动: pid={process.pid}")
+        print(f"✅ Agent CLI 命令: {cli_command}")
+        return f"pid:{process.pid}", process.pid, str(heartbeat_file), str(log_file), cli_command
     
     def create_task_record(self, task_id: str, agent_type: str, model: str,
                            description: str, repo: str, branch: str,
-                           worktree: Path, tmux_session: str) -> Dict[str, Any]:
+                           worktree: Path, tmux_session: str,
+                           orchestration: Optional[Dict[str, Any]] = None,
+                           process_id: Optional[int] = None,
+                           heartbeat_file: Optional[str] = None,
+                           log_file: Optional[str] = None,
+                           prompt_file: Optional[str] = None,
+                           launch_command: Optional[str] = None) -> Dict[str, Any]:
         """创建任务记录"""
         task_record = {
             "id": task_id,
@@ -140,11 +287,25 @@ echo "Model: {model}"
             "repo": repo,
             "worktree": str(worktree),
             "branch": branch,
-            "startedAt": int(datetime.now().timestamp() * 1000),
+            "startedAt": self._now_ms(),
+            "updatedAt": self._now_ms(),
             "status": "running",
             "notifyOnComplete": True,
             "retries": 0,
-            "maxRetries": self.config.get('cluster', {}).get('max_retries', 3)
+            "maxRetries": self.config.get('cluster', {}).get('max_retries', 3),
+            "processId": process_id,
+            "heartbeatFile": heartbeat_file,
+            "logFile": log_file,
+            "promptFile": prompt_file,
+            "launchCommand": launch_command,
+            "orchestration": orchestration or {},
+            "events": [
+                {
+                    "at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "type": "task_started",
+                    "message": "Agent 已启动"
+                }
+            ]
         }
         
         # 保存到文件
@@ -157,45 +318,68 @@ echo "Model: {model}"
         return task_record
     
     def launch(self, task_id: str, description: str, agent_type: str = "codex",
-               model: str = None, base_branch: str = "main") -> Dict[str, Any]:
+             model: Optional[str] = None, base_branch: str = "main",
+             orchestration: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """启动 Agent"""
         
         # 获取配置
         agent_config = self.config.get('agents', {}).get(agent_type, {})
-        if not model:
-            model = agent_config.get('model', 'gpt-5.3-codex')
+        model_name = str(model or agent_config.get('model', 'gpt-5.3-codex'))
         
         # 生成分支名
         branch_name = f"feat/{task_id[:50]}"
         
         print(f"\n🚀 启动 Agent: {agent_type}")
         print(f"   任务ID: {task_id}")
-        print(f"   模型: {model}")
+        print(f"   模型: {model_name}")
         print(f"   描述: {description}")
         print()
         
         try:
             # 1. 创建 worktree
             worktree = self.create_worktree(task_id, branch_name, base_branch)
+
+            prompt_text = (orchestration or {}).get(
+                "prompt",
+                f"任务: {description}\nAgent: {agent_type}\n模型: {model_name}\n"
+            )
+            prompt_file = self._write_prompt_file(worktree, prompt_text)
             
             # 2. 安装依赖
             self.install_dependencies(worktree)
             
             # 3. 启动 tmux 会话或后台进程
-            tmux_session = self.start_tmux_session(
-                task_id, worktree, agent_type, model, description
-            )
+            process_id = None
+            heartbeat_file = None
+            log_file = None
+            launch_command = None
+
+            try:
+                tmux_session = self.start_tmux_session(
+                    task_id, worktree, agent_type, model_name, description
+                )
+            except Exception:
+                print("⚠️  未找到 tmux，使用后台进程模式")
+                tmux_session, process_id, heartbeat_file, log_file, launch_command = self.start_background_process(
+                    task_id, worktree, agent_type, model_name, prompt_file, description
+                )
             
             # 4. 创建任务记录
             task_record = self.create_task_record(
                 task_id=task_id,
                 agent_type=agent_type,
-                model=model,
+                model=model_name,
                 description=description,
                 repo=os.path.basename(os.getcwd()),
                 branch=branch_name,
                 worktree=worktree,
-                tmux_session=tmux_session
+                tmux_session=tmux_session,
+                orchestration=orchestration,
+                process_id=process_id,
+                heartbeat_file=heartbeat_file,
+                log_file=log_file,
+                prompt_file=str(prompt_file),
+                launch_command=launch_command
             )
             
             return task_record

@@ -112,7 +112,7 @@ def quick_start():
    pip install pyyaml requests
 
 2. 配置通知 (可选):
-   编辑 agent-config.yaml，填写 Telegram/Discord 配置
+    编辑 agent-config.yaml，填写 微信/Discord 配置
 
 3. 提交第一个任务:
    python cluster_manager.py submit "实现用户登录功能"

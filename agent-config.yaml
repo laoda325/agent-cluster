@@ -11,6 +11,7 @@ agents:
   codex:
     enabled: true
     model: "gpt-5.3-codex"
+    cli_command_template: "codex --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
     priority: 1
     description: "主力Agent - 后端逻辑、复杂bug、多文件重构"
     use_cases:
@@ -25,6 +26,7 @@ agents:
   claude_code:
     enabled: true
     model: "claude-opus-4.5"
+    cli_command_template: "claude-code --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
     priority: 2
     description: "速度型Agent - 前端工作、git操作"
     use_cases:
@@ -38,6 +40,7 @@ agents:
   gemini:
     enabled: true
     model: "gemini-2.5-pro"
+    cli_command_template: "gemini --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
     priority: 3
     description: "设计师Agent - UI/UX设计、设计规范"
     use_cases:
@@ -70,6 +73,7 @@ reviewers:
 monitoring:
   check_interval_minutes: 10
   max_idle_minutes: 120
+  min_runtime_minutes_before_retry: 5
   notify_on:
     - pr_ready
     - agent_failed
@@ -77,10 +81,9 @@ monitoring:
     - all_reviewers_passed
 
 notifications:
-  telegram:
-    enabled: false
-    bot_token: ""
-    chat_id: ""
+  wechat:
+    enabled: true
+    webhook_url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=3f99cb1b-effd-4380-840a-5c792330ec5a"
   
   discord:
     enabled: false

@@ -100,6 +100,7 @@ agents:
   codex:
     enabled: true
     model: "gpt-5.3-codex"
+    cli_command_template: "codex --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
     priority: 1
     description: "主力Agent - 后端逻辑、复杂bug、多文件重构"
     use_cases:
@@ -111,6 +112,7 @@ agents:
   claude_code:
     enabled: true
     model: "claude-opus-4.5"
+    cli_command_template: "claude-code --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
     priority: 2
     description: "速度型Agent - 前端工作、git操作"
     use_cases:
@@ -122,6 +124,7 @@ agents:
   gemini:
     enabled: true
     model: "gemini-2.5-pro"
+    cli_command_template: "gemini --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
     priority: 3
     description: "设计师Agent - UI/UX设计"
     use_cases:
@@ -145,15 +148,15 @@ reviewers:
 monitoring:
   check_interval_minutes: 10
   max_idle_minutes: 120
+  min_runtime_minutes_before_retry: 5
   notify_on:
     - pr_ready
     - agent_failed
 
 notifications:
-  telegram:
+  wechat:
     enabled: false
-    bot_token: "YOUR_BOT_TOKEN"
-    chat_id: "YOUR_CHAT_ID"
+    webhook_url: "YOUR_WECHAT_WEBHOOK_URL"
   
   discord:
     enabled: false
@@ -214,7 +217,7 @@ def main():
 1. 编辑配置文件:
    nano agent-config.yaml  # 或使用你喜欢的编辑器
 
-2. 配置 Telegram/Discord 通知（可选）
+2. 配置 微信/Discord 通知（可选）
 
 3. 运行示例工作流:
    python example_workflow.py --demo

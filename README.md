@@ -39,16 +39,26 @@ pip install pyyaml requests
 ```yaml
 # 配置 微信 通知
 notifications:
-  Wechat:
+  wechat:
     enabled: true
-    bot_token: "YOUR_BOT_TOKEN"
-    chat_id: "YOUR_CHAT_ID"
+    webhook_url: "YOUR_WECHAT_WEBHOOK_URL"
 
 # 配置 Agent
 agents:
   codex:
     enabled: true
     model: "gpt-5.3-codex"
+    cli_command_template: "codex --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
+
+  claude_code:
+    enabled: true
+    model: "claude-opus-4.5"
+    cli_command_template: "claude-code --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
+
+  gemini:
+    enabled: true
+    model: "gemini-2.5-pro"
+    cli_command_template: "gemini --model {model} --cwd \"{worktree}\" --prompt-file \"{prompt_file}\""
 ```
 
 ### 3. 提交任务
@@ -126,7 +136,7 @@ agent-cluster/
 ## 📊 任务生命周期
 
 ```
-提交任务 → 选择Agent → 创建worktree → 启动tmux → 执行任务
+提交任务 → 选择Agent → 创建worktree → 启动执行会话（tmux/后台进程）→ 执行任务
                                               ↓
                                         创建PR
                                               ↓
@@ -158,6 +168,8 @@ PR 需要满足以下条件才算"完成"：
 - PR 准备好审查时
 - Agent 失败时
 - PR 合并时
+
+Windows 环境下会自动回退到后台进程模式，并通过任务心跳文件判断执行状态。
 
 ## 🔄 Ralph Loop（改进版）
 
@@ -198,6 +210,7 @@ cluster:
 ```yaml
 monitoring:
   check_interval_minutes: 10
+  min_runtime_minutes_before_retry: 5
 ```
 
 ## 📝 最佳实践

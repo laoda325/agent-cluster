@@ -5,20 +5,22 @@ Agent 集群主控程序 - 统一入口点
 
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import yaml
 
 # 添加脚本目录到路径
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent / "scripts"))
 
-from start_agent import AgentLauncher
-from monitor_agents import AgentMonitor
-from select_agent import AgentSelector
-from review_pr import CodeReviewer
-from notify import NotificationService
+from scripts.start_agent import AgentLauncher
+from scripts.monitor_agents import AgentMonitor
+from scripts.select_agent import AgentSelector
+from scripts.review_pr import CodeReviewer
+from scripts.notify import NotificationService
 
 
 class AgentCluster:
@@ -44,6 +46,43 @@ class AgentCluster:
                 self.config = yaml.safe_load(f)
         else:
             self.config = {}
+
+    def _build_task_id(self, description: str) -> str:
+        """生成稳定且安全的任务 ID"""
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        slug = re.sub(r"[^\w\u4e00-\u9fff-]+", "-", description.strip())
+        slug = re.sub(r"-+", "-", slug).strip("-")
+        if not slug:
+            slug = "task"
+        return f"task-{timestamp}-{slug[:40]}"
+
+    def _build_prompt(self, description: str, agent: str, analysis: Any,
+                      retry_count: int = 0,
+                      failure_reason: Optional[str] = None) -> str:
+        """构建编排层下发给执行层的提示词"""
+        retry_note = ""
+        if retry_count > 0:
+            retry_note = (
+                f"\n[重试上下文]\n"
+                f"- 重试次数: {retry_count}\n"
+                f"- 失败原因: {failure_reason or '未知'}\n"
+                f"- 要求: 避免重复上一次失败路径，先验证关键假设再继续实现。\n"
+            )
+
+        return (
+            "你是执行层 Agent，请在隔离 worktree 中完成任务。\n\n"
+            "[任务目标]\n"
+            f"- 描述: {description}\n"
+            f"- 建议 Agent: {agent}\n"
+            f"- 任务类型: {analysis.task_type}\n"
+            f"- 选择理由: {analysis.reasoning}\n"
+            "\n[执行要求]\n"
+            "- 先阅读相关代码与配置，再开始改动。\n"
+            "- 变更后运行必要验证命令。\n"
+            "- 产出可提交的代码与清晰变更说明。\n"
+            "- 若发现阻塞，记录阻塞原因与建议下一步。\n"
+            f"{retry_note}"
+        )
     
     def submit_task(self, description: str, 
                    preferred_agent: Optional[str] = None,
@@ -59,9 +98,18 @@ class AgentCluster:
         print(f"   置信度: {analysis.confidence:.1%}")
         print(f"   推理: {analysis.reasoning}")
         
-        # 2. 生成任务 ID
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        task_id = f"task-{timestamp}-{description[:20].replace(' ', '-')}"
+        # 2. 生成任务 ID + 编排上下文
+        task_id = self._build_task_id(description)
+        prompt = self._build_prompt(description, agent, analysis)
+        orchestration = {
+            "task_type": analysis.task_type,
+            "keywords": analysis.keywords,
+            "confidence": analysis.confidence,
+            "reasoning": analysis.reasoning,
+            "prompt": prompt,
+            "retryCount": 0,
+            "createdAt": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
         
         # 3. 启动 Agent
         print(f"\n🚀 启动 Agent...")
@@ -69,7 +117,8 @@ class AgentCluster:
             task_id=task_id,
             description=description,
             agent_type=agent,
-            base_branch=base_branch
+            base_branch=base_branch,
+            orchestration=orchestration
         )
         
         # 4. 发送通知
@@ -105,13 +154,13 @@ class AgentCluster:
         
         return {"stats": stats, "results": results}
     
-    def review_pr(self, pr_number: int, reviewers: list = None) -> Dict[str, Any]:
+    def review_pr(self, pr_number: int, reviewers: Optional[List[str]] = None) -> Dict[str, Any]:
         """审查 PR"""
         print(f"\n{'='*60}")
         print(f"🔍 审查 PR #{pr_number}")
         print(f"{'='*60}")
         
-        results = self.reviewer.review_pr(pr_number, reviewers)
+        results = self.reviewer.review_pr(pr_number, reviewers or ["codex", "gemini"])
         
         all_approved = all(r.approved for r in results.values())
         
@@ -162,18 +211,44 @@ class AgentCluster:
                         
                         if retries < max_retries:
                             print(f"\n⚠️  重试任务: {task['id']}")
+                            previous_orchestration = task.get("orchestration", {})
+                            retry_count = retries + 1
+                            retry_prompt = self._build_prompt(
+                                description=task.get('description', ''),
+                                agent=task.get('agent', 'codex'),
+                                analysis=type('A', (), {
+                                    'task_type': previous_orchestration.get('task_type', 'general'),
+                                    'reasoning': previous_orchestration.get('reasoning', '自动重试'),
+                                    'keywords': previous_orchestration.get('keywords', [])
+                                })(),
+                                retry_count=retry_count,
+                                failure_reason="监控检测到执行中断或超时"
+                            )
+
+                            orchestration = {
+                                **previous_orchestration,
+                                "prompt": retry_prompt,
+                                "retryCount": retry_count,
+                                "lastRetryAt": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            }
+
                             # 重新启动 Agent
                             self.launcher.launch(
                                 task_id=task['id'],
-                                description=task.get('description'),
-                                agent_type=task.get('agent'),
-                                base_branch="main"
+                                description=str(task.get('description') or ''),
+                                agent_type=str(task.get('agent') or 'codex'),
+                                base_branch="main",
+                                orchestration=orchestration
                             )
                             
                             # 更新重试次数
                             self.monitor.update_task_status(
                                 task['id'],
-                                {"retries": retries + 1, "status": "running"}
+                                {
+                                    "retries": retry_count,
+                                    "status": "running",
+                                    "updatedAt": int(datetime.now().timestamp() * 1000)
+                                }
                             )
                 
                 print(f"\n⏰ 等待 {interval_minutes} 分钟...\n")
@@ -212,6 +287,7 @@ def main():
     parser.add_argument("command", 
                        choices=["submit", "status", "review", "daemon", "dashboard"],
                        help="命令")
+    parser.add_argument("description_pos", nargs="?", help="任务描述（submit 命令的位置参数）")
     parser.add_argument("--config", default="./agent-config.yaml", help="配置文件路径")
     parser.add_argument("--description", help="任务描述")
     parser.add_argument("--agent", help="指定 Agent")
@@ -229,12 +305,13 @@ def main():
     cluster = AgentCluster(args.config)
     
     if args.command == "submit":
-        if not args.description:
+        task_description = args.description or args.description_pos
+        if not task_description:
             print("❌ 请提供任务描述: --description")
             sys.exit(1)
         
         result = cluster.submit_task(
-            description=args.description,
+            description=task_description,
             preferred_agent=args.agent,
             base_branch=args.base_branch
         )
