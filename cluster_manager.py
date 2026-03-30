@@ -21,6 +21,7 @@ from scripts.monitor_agents import AgentMonitor
 from scripts.select_agent import AgentSelector
 from scripts.review_pr import CodeReviewer
 from scripts.notify import NotificationService
+from scripts.ralph_loop import RalphLoop
 
 
 class AgentCluster:
@@ -36,6 +37,7 @@ class AgentCluster:
         self.selector = AgentSelector(config_path)
         self.reviewer = CodeReviewer(config_path)
         self.notifier = NotificationService(config_path)
+        self.ralph = RalphLoop(str(self.base_dir / "context"))
         
         self.load_config()
     
@@ -92,7 +94,13 @@ class AgentCluster:
         print(f"📋 提交新任务")
         print(f"{'='*60}")
         
-        # 1. 选择 Agent
+        # 1. 选择 Agent（使用 Ralph Loop 推荐）
+        if not preferred_agent:
+            ralph_rec = self.ralph.get_agent_recommendation(description)
+            if ralph_rec.get("best_agent"):
+                preferred_agent = ralph_rec["best_agent"]
+                print(f"\n🧠 Ralph Loop 推荐 Agent: {preferred_agent}")
+        
         agent, analysis = self.selector.select_agent(description, preferred_agent)
         print(f"\n✅ 选择 Agent: {agent}")
         print(f"   置信度: {analysis.confidence:.1%}")
@@ -152,6 +160,19 @@ class AgentCluster:
         print(f"  - 准备审查: {stats['ready_for_review']}")
         print(f"  - 需要重试: {stats['needs_retry']}")
         
+        # Ralph Loop: 记录任务结果
+        for result in results:
+            if result.get("status") in ["completed", "failed"]:
+                self.ralph.record_task(
+                    task_id=result.get("id", "unknown"),
+                    description=result.get("description", ""),
+                    agent=result.get("agent", "unknown"),
+                    success=result.get("status") == "completed",
+                    failure_reason=result.get("failure_reason"),
+                    pr_created=result.get("pr_created", False),
+                    ci_passed=result.get("ci_passed", False)
+                )
+        
         return {"stats": stats, "results": results}
     
     def review_pr(self, pr_number: int, reviewers: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -187,6 +208,16 @@ class AgentCluster:
                 f"| {task['id'][:30]} | {task.get('agent', 'N/A')} | "
                 f"{task.get('status', 'unknown')} | {task.get('description', '')[:50]} |"
             )
+        
+        # Ralph Loop 统计
+        ralph_stats = self.ralph.get_stats()
+        lines.extend([
+            "\n## Ralph Loop 学习统计\n",
+            f"- 总任务数: {ralph_stats['total_tasks']}",
+            f"- 成功率: {ralph_stats['success_rate']*100:.1f}%",
+            f"- 学习模式数: {ralph_stats['patterns_count']}",
+            f"- 最后更新: {ralph_stats['last_updated'][:19]}"
+        ])
         
         return "\n".join(lines)
     
