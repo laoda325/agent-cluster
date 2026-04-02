@@ -1,103 +1,101 @@
-# Agent Cluster Configuration
-# Agent 集群配置文件
-
+agents:
+  claude_code:
+    cli_command_template: cd "{worktree}" && claude-code --model {model} -f "{prompt_file}"
+    description: 速度型Agent - 前端工作、git操作
+    enabled: true
+    limitations:
+    - 适合快速迭代
+    model: claude-opus-4.5
+    priority: 2
+    use_cases:
+    - frontend_work
+    - git_operations
+    - quick_fixes
+    weight: 0.7
+  codex:
+    cli_command_template: cd "{worktree}" && codex exec --model {model} < "{prompt_file}"
+    description: 主力Agent - 后端逻辑、复杂bug、多文件重构
+    enabled: true
+    limitations:
+    - 较慢但彻底
+    model: gpt-5.3-codex
+    priority: 1
+    use_cases:
+    - backend_logic
+    - complex_bugs
+    - multi_file_refactor
+    - cross_codebase_reasoning
+    weight: 0.9
+  deepseek:
+    api_key: sk-5a1b68c2819b49f49caaf2e73a7d6bc7
+    base_url: https://api.deepseek.com/v1
+    description: DeepSeek API - 用于小说创作和中文任务
+    enabled: true
+    model: deepseek-chat
+    priority: 1
+    use_cases:
+    - novel_writing
+    - chinese_content
+    - creative_writing
+    weight: 0.95
+  gemini:
+    cli_command_template: cd "{worktree}" && gemini --model {model} -f "{prompt_file}"
+    description: 设计师Agent - UI/UX设计、设计规范
+    enabled: true
+    limitations:
+    - 擅长设计审美
+    model: gemini-2.5-pro
+    priority: 3
+    use_cases:
+    - ui_design
+    - design_specs
+    - html_css
+    weight: 0.5
 cluster:
-  name: "AgentCluster"
-  version: "1.0.0"
   max_concurrent_agents: 5
   max_retries: 3
-
-agents:
-  codex:
-    enabled: true
-    model: "gpt-5.3-codex"
-    cli_command_template: "cd \"{worktree}\" && codex exec --model {model} < \"{prompt_file}\""
-    priority: 1
-    description: "主力Agent - 后端逻辑、复杂bug、多文件重构"
-    use_cases:
-      - backend_logic
-      - complex_bugs
-      - multi_file_refactor
-      - cross_codebase_reasoning
-    limitations:
-      - "较慢但彻底"
-    weight: 0.9
-
-  claude_code:
-    enabled: true
-    model: "claude-opus-4.5"
-    cli_command_template: "cd \"{worktree}\" && claude-code --model {model} -f \"{prompt_file}\""
-    priority: 2
-    description: "速度型Agent - 前端工作、git操作"
-    use_cases:
-      - frontend_work
-      - git_operations
-      - quick_fixes
-    limitations:
-      - "适合快速迭代"
-    weight: 0.7
-
-  gemini:
-    enabled: true
-    model: "gemini-2.5-pro"
-    cli_command_template: "cd \"{worktree}\" && gemini --model {model} -f \"{prompt_file}\""
-    priority: 3
-    description: "设计师Agent - UI/UX设计、设计规范"
-    use_cases:
-      - ui_design
-      - design_specs
-      - html_css
-    limitations:
-      - "擅长设计审美"
-    weight: 0.5
-
-reviewers:
-  codex_reviewer:
-    enabled: true
-    model: "gpt-5.3-codex"
-    focus: "边界情况、逻辑错误、缺失错误处理、竞态条件"
-    trust_level: "high"
-
-  gemini_reviewer:
-    enabled: true
-    model: "gemini-code-assist"
-    focus: "安全问题、扩展性问题"
-    trust_level: "medium"
-
-  claude_reviewer:
-    enabled: false
-    model: "claude-opus-4.5"
-    focus: "过度谨慎，通常跳过"
-    trust_level: "low"
-
+  name: AgentCluster
+  version: 1.0.0
+completion_criteria:
+  branch_synced: true
+  ci_passed: true
+  codex_reviewer_passed: true
+  gemini_reviewer_passed: true
+  pr_created: true
+  ui_screenshots: true
 monitoring:
   check_interval_minutes: 10
   max_idle_minutes: 120
   min_runtime_minutes_before_retry: 5
   notify_on:
-    - pr_ready
-    - agent_failed
-    - ci_failed
-    - all_reviewers_passed
-
+  - pr_ready
+  - agent_failed
+  - ci_failed
+  - all_reviewers_passed
 notifications:
-  wechat:
-    enabled: true
-    webhook_url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=3f99cb1b-effd-4380-840a-5c792330ec5a"
-  
   discord:
     enabled: false
-    webhook_url: ""
-
+    webhook_url: ''
+  wechat:
+    enabled: true
+    webhook_url: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=3f99cb1b-effd-4380-840a-5c792330ec5a
+reviewers:
+  claude_reviewer:
+    enabled: false
+    focus: 过度谨慎，通常跳过
+    model: claude-opus-4.5
+    trust_level: low
+  codex_reviewer:
+    enabled: true
+    focus: 边界情况、逻辑错误、缺失错误处理、竞态条件
+    model: gpt-5.3-codex
+    trust_level: high
+  gemini_reviewer:
+    enabled: true
+    focus: 安全问题、扩展性问题
+    model: gemini-code-assist
+    trust_level: medium
 storage:
-  tasks_dir: "./tasks"
-  worktrees_base: "../worktrees"
-  context_dir: "./context"
-
-completion_criteria:
-  pr_created: true
-  branch_synced: true
-  ci_passed: true
-  codex_reviewer_passed: true
-  gemini_reviewer_passed: true
-  ui_screenshots: true
+  context_dir: ./context
+  tasks_dir: ./tasks
+  worktrees_base: ../worktrees

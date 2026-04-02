@@ -65,8 +65,70 @@ class SGYYWriter:
             }
         ]
     
-    def call_api(self, prompt: str) -> str:
+    # 每章专属的开头切入方式，确保多样性
+    CHAPTER_OPENERS = {
+        "vol_184_第一卷：黄巾乱世": {
+            1: ("环境描写", "从自然景象或季节切入"),
+            2: ("对话开场", "从人物对话直接切入"),
+            3: ("动作开场", "从人物正在进行的动作切入"),
+            4: ("行进场景", "从赶路或逃难的动态场景切入"),
+            5: ("偶遇场景", "从意外相遇的瞬间切入"),
+            6: ("紧张时刻", "从危险或紧急情况切入"),
+            7: ("声音开场", "从远处传来的声音或消息切入"),
+            8: ("战后场景", "从战争结束后的废墟或余波切入"),
+            9: ("内心独白", "从主人公的心理活动切入"),
+            10: ("时间流逝", "从季节更替或岁月感慨切入"),
+        },
+        "vol_220_第二卷：三国鼎立": {
+            1: ("仪式场景", "从盛大的典礼或仪式切入"),
+            2: ("战场边缘", "从战场附近的普通人视角切入"),
+            3: ("雨夜场景", "从雨夜守城的孤独氛围切入"),
+            4: ("出征前夕", "从军队集结或出发前的场景切入"),
+            5: ("政变消息", "从突然传来的政治消息切入"),
+            6: ("市井传言", "从街头巷尾的议论声切入"),
+            7: ("末日氛围", "从城破前夕的绝望气氛切入"),
+            8: ("乱军之中", "从混乱的战场或逃亡场景切入"),
+            9: ("新朝气象", "从新王朝建立后的变化切入"),
+            10: ("江边送别", "从江边目送或离别场景切入"),
+        },
+        "vol_280_第三卷：天下归晋": {
+            1: ("渔网劳作", "从老年张翼的日常劳作切入"),
+            2: ("噩耗传来", "从得知故人离世的消息切入"),
+            3: ("独坐回忆", "从独自坐在某处陷入回忆切入"),
+            4: ("家族聚会", "从子孙绕膝的热闹场景切入"),
+            5: ("历史感慨", "从目睹某个历史重演的场景切入"),
+            6: ("夕阳黄昏", "从黄昏时分的沉思切入"),
+            7: ("病榻之上", "从身体衰老的感受切入"),
+            8: ("临终回望", "从生命最后时刻的回望切入"),
+        }
+    }
+
+    def call_api(self, prompt: str, chapter_info: str = "", opener_hint: str = "") -> str:
         """调用 DeepSeek API"""
+        system_prompt = f"""你是一位专业的历史小说作家，擅长创作三国时期的历史小说。
+
+【本章专属开头方式 - 必须严格遵守】
+开头类型：{opener_hint}
+你必须用这种方式开头，不得使用其他方式。
+
+【绝对禁止的重复模式】
+- 禁止："XX的XX总是这样，XX地贴着人的脸"
+- 禁止："XX背着XX，沿着XX慢慢走着"
+- 禁止：任何与前文章节相同或相似的开头句式
+- 禁止：以"张翼站在XX外"作为开头
+- 禁止：以"XX的晨雾"作为开头
+
+【写作要求】
+- 风格：朴实厚重，半文半白
+- 视角：第三人称小人物视角
+- 字数：1500-2500字
+- 情节必须紧扣本章概要，有实质性推进
+
+【本章信息】
+{chapter_info}
+
+直接输出正文，第一句话必须符合上述"本章专属开头方式"。"""
+
         response = requests.post(
             "https://api.deepseek.com/v1/chat/completions",
             headers={
@@ -76,11 +138,13 @@ class SGYYWriter:
             json={
                 "model": "deepseek-chat",
                 "messages": [
-                    {"role": "system", "content": "你是一位专业的历史小说作家，擅长创作三国时期的历史小说。"},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": 0.7,
-                "max_tokens": 4000
+                "temperature": 0.9,
+                "max_tokens": 4000,
+                "presence_penalty": 0.6,   # 惩罚重复词汇
+                "frequency_penalty": 0.4   # 降低高频词出现概率
             },
             timeout=180
         )
@@ -99,26 +163,46 @@ class SGYYWriter:
         print(f"📝 创作中: {volume_name} 第{num}章 - {title}")
         print(f"{'='*60}")
         
-        prompt = f"""你是一位专业的历史小说作家。请创作《三国演义外传》{volume_name}第{num}章。
-
-## 章节信息
-- 标题：第{num}章：{title}
+        # 获取本章专属开头方式
+        vol_openers = self.CHAPTER_OPENERS.get(volume_name, {})
+        opener_type, opener_desc = vol_openers.get(num, ("自由开头", "用最适合本章的方式切入"))
+        
+        # 章节信息
+        chapter_info = f"""
+- 卷名：{volume_name}
+- 章节：第{num}章《{title}》
 - 时间：公元{year}年
 - 概要：{desc}
+- 主人公：张翼，字子翔，184年生于涿郡，现年{year - 184}岁
+"""
+        
+        # 提取前文最后一段作为衔接依据
+        last_para = ""
+        if context:
+            paras = [p.strip() for p in context.split('\n') if p.strip()]
+            last_para = paras[-1][:150] if paras else ""
+        
+        prompt = f"""请创作《三国演义外传》{volume_name}第{num}章《{title}》。
 
-## 主人公
-张翼，字子翔，184年出生于涿郡普通农家。历经东汉末年、黄巾起义、三国鼎立、西晋统一。
+## 本章核心信息
+- 时间：公元{year}年，张翼{year - 184}岁
+- 核心事件：{desc}
+- 张翼在此事件中的角色：亲历者或旁观者，以小人物视角呈现
 
-## 写作要求
-- 字数：1500-2500字
-- 风格：朴实厚重，半文半白
-- 视角：第三人称小人物视角
-- 与前文衔接：{context[:200] if context else "无（本章为开头）"}
+## 开头要求（必须严格执行）
+开头类型：【{opener_type}】
+具体方式：{opener_desc}
+{"前文最后一句：「" + last_para + "」（开头必须与此不同，形成自然过渡）" if last_para else "本章为全书开篇，直接切入场景。"}
 
-请直接输出章节正文，不需要标题说明。"""
+## 内容要求
+1. 围绕"{desc}"展开，有具体的人物、对话、行动
+2. 体现张翼作为普通人的视角和感受
+3. 结尾留有余韵，为下一章做铺垫
+
+直接输出正文，不要标题，不要说明。"""
         
         try:
-            content = self.call_api(prompt)
+            content = self.call_api(prompt, chapter_info, f"{opener_type}：{opener_desc}")
             
             # 保存文件
             vol_dir = self.output_dir / volume_name
@@ -127,7 +211,7 @@ class SGYYWriter:
             chapter_file = vol_dir / f"chapter_{num:03d}.md"
             chapter_file.write_text(content, encoding='utf-8')
             
-            print(f"✅ 完成: {chapter_file.name} ({len(content)} 字)")
+            print(f"✅ 完成: {chapter_file.name} ({len(content)} 字) | 开头方式: {opener_type}")
             return True
             
         except Exception as e:
